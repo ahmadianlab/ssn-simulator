@@ -1,7 +1,7 @@
 import numpy as np
 #import jax.numpy as np
 
-def Euler2fixedpt(dxdt, x_initial, Tmax, dt, xtol=1e-5, xmin=1e-0, Tmin=200, PLOT=False, inds=None, verbose=True):
+def Euler2fixedpt(dxdt, x_initial, Tmax, dt, xtol=1e-5, xmin=1e-0, Tmin=200, PLOT=False, inds=None, verbose=False, silent=False, Tfrac_CV=0):
     """
     Finds the fixed point of the D-dim ODE set dx/dt = dxdt(x), using the
     Euler update with sufficiently large dt (to gain in computational time).
@@ -19,7 +19,10 @@ def Euler2fixedpt(dxdt, x_initial, Tmax, dt, xtol=1e-5, xmin=1e-0, Tmin=200, PLO
         value and inputting a value for 'xtol' equal to xtol_desired/xmin.
     PLOT: if True, plot the convergence of some component
     inds: indices of x (state-vector) to plot
-
+    verbose: if True print convergence criteria even if passed (function always prints out a warning if it doesn't converge).
+    Tfrac_var: if not zero, maximal temporal CV (coeff. of variation) of state vector components, over the final
+               Tfrac_CV fraction of Euler timesteps, is calculated and printed out.
+               
     OUT:
     xvec = found fixed point solution
     CONVG = True if determined converged, False if not
@@ -27,20 +30,30 @@ def Euler2fixedpt(dxdt, x_initial, Tmax, dt, xtol=1e-5, xmin=1e-0, Tmin=200, PLO
 
     if PLOT:
         if inds is None:
-            N = x_initial.shape[0] # x_initial.size
-            inds = [int(N/4), int(3*N/4)]
-        xplot = x_initial[inds][:,None]
+            x_dim = x_initial.size
+            inds = [int(x_dim/4), int(3*x_dim/4)]
+        xplot = x_initial.flatten()[inds][:,None]
 
     Nmax = int(np.round(Tmax/dt))
     Nmin = int(np.round(Tmin/dt)) if Tmax > Tmin else int(Nmax/2)
     xvec = x_initial
     CONVG = False
+
+    if Tfrac_CV > 0:
+        xmean = np.zeros_like(xvec)
+        xsqmean = np.zeros_like(xvec)
+        Nsamp = 0
+
     for n in range(Nmax):
         dx = dxdt(xvec) * dt
         xvec = xvec + dx
         if PLOT:
-            #xplot = np.asarray([xplot, xvvec[inds]])
-            xplot = np.hstack((xplot,xvec[inds][:,None]))
+            xplot = np.hstack((xplot, xvec.flatten()[inds][:,None]))
+        
+        if Tfrac_CV > 0 and n >= (1-Tfrac_CV) * Nmax:
+            xmean = xmean + xvec
+            xsqmean = xsqmean + xvec**2
+            Nsamp = Nsamp + 1
 
         if n > Nmin:
             if np.abs( dx /np.maximum(xmin, np.abs(xvec)) ).max() < xtol:
@@ -49,9 +62,18 @@ def Euler2fixedpt(dxdt, x_initial, Tmax, dt, xtol=1e-5, xmin=1e-0, Tmin=200, PLO
                 CONVG = True
                 break
 
-    if not CONVG: # n == Nmax:
+    if not CONVG and not silent: # n == Nmax:
         print("\n Warning 1: reached Tmax={}, before convergence to fixed point.".format(Tmax))
         print("       max(abs(dx./max(abs(xvec), {}))) = {},   xtol={}.\n".format(xmin, np.abs( dx /np.maximum(xmin, np.abs(xvec)) ).max(), xtol))
+
+        if Tfrac_CV > 0:
+            xmean = xmean/Nsamp
+            xvec_SD = np.sqrt(xsqmean/Nsamp - xmean**2)
+            # CV = xvec_SD / xmean
+            # CVmax = CV.max()
+            CVmax = xvec_SD.max() / xmean.max()
+            print(f"max(SD)/max(mean) of state vector in the final {Tfrac_CV:.2} fraction of Euler steps was {CVmax:.5}")
+
         #mybeep(.2,350)
         #beep
 

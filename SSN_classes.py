@@ -1,10 +1,11 @@
 import numpy as np
-from util import Euler2fixedpt
-
+from util import Euler2fixedpt, toeplitz
 #from SSN_power_spec import linear_power_spect_loop
 import SSN_power_spec
 
+
 # ============================  base classes ===================================
+
 
 class _SSN_Base(object):
     def __init__(self, n, k, Ne, Ni, tau_vec=None, W=None):
@@ -27,6 +28,7 @@ class _SSN_Base(object):
         #     sign_vec = np.hstack(np.ones(self.Ne), -np.ones(self.Ni))
         #     self.W = W * sign_vec[None, :] # to respect Dale
 
+
     @property
     def neuron_params(self):
         return dict(n=self.n, k=self.k)
@@ -44,8 +46,10 @@ class _SSN_Base(object):
     def powlaw(self, u):
         return  self.k * np.maximum(0,u)**self.n
 
+
     def drdt(self, r, inp_vec):
         return ( -r + self.powlaw(self.W @ r + inp_vec) ) / self.tau_vec
+
 
     def drdt_multi(self, r, inp_vec):
         """
@@ -54,6 +58,7 @@ class _SSN_Base(object):
         """
         return (( -r + self.powlaw(self.W @ r + inp_vec) ).T / self.tau_vec ).T
 
+
     def dxdt(self, x, inp_vec):
         """
         allowing for descendent SSN types whose state-vector, x, is different
@@ -61,11 +66,14 @@ class _SSN_Base(object):
         """
         return self.drdt(x, inp_vec)
 
+
     def gains_from_v(self, v):
         return self.n * self.k * np.maximum(0,v)**(self.n-1)
 
+
     def gains_from_r(self, r):
         return self.n * self.k**(1/self.n) * r**(1-1/self.n)
+
 
     def DCjacobian(self, r):
         """
@@ -74,6 +82,7 @@ class _SSN_Base(object):
         """
         Phi = self.gains_from_r(r)
         return -np.eye(self.N) + Phi[:, None] * self.W
+
 
     def jacobian(self, DCjacob=None, r=None):
         """
@@ -84,9 +93,11 @@ class _SSN_Base(object):
             DCjacob = self.DCjacobian(r)
         return DCjacob / self.tau_x_vec[:, None] # equivalent to np.diag(tau_x_vec) * DCjacob
 
+
     def jacobian_eigvals(self, DCjacob=None, r=None):
         Jacob = self.jacobian(DCjacob=DCjacob, r=r)
         return np.linalg.eigvals(Jacob)
+
 
     def inv_G(self, omega, DCjacob, r=None):
         """
@@ -98,29 +109,32 @@ class _SSN_Base(object):
             DCjacob = self.DCjacobian(r)
         return -1j*omega * np.diag(self.tau_x_vec) - DCjacob
 
-    def fixed_point_r(self, inp_vec, r_init=None, Tmax=500, dt=1, xtol=1e-5, PLOT=False, verbose=True):
+
+    def fixed_point_r(self, inp_vec, r_init=None, Tmax=500, dt=1, xtol=1e-5, PLOT=False, verbose=False, silent=False):
         if r_init is None:
             r_init = np.zeros(inp_vec.shape) # np.zeros((self.N,))
         drdt = lambda r : self.drdt(r, inp_vec)
         if inp_vec.ndim > 1:
             drdt = lambda r : self.drdt_multi(r, inp_vec)
-        r_fp, CONVG = Euler2fixedpt(drdt, r_init, Tmax, dt, xtol=xtol, PLOT=PLOT, verbose=verbose)
-        if not CONVG:
+        r_fp, CONVG = Euler2fixedpt(drdt, r_init, Tmax, dt, xtol=xtol, PLOT=PLOT, verbose=verbose, silent=silent)
+        if not CONVG and not silent:
             print('Did not reach fixed point.')
         #else:
         #    return r_fp
         return r_fp, CONVG
 
-    def fixed_point(self, inp_vec, x_init=None, Tmax=500, dt=1, xtol=1e-5, PLOT=False):
+
+    def fixed_point(self, inp_vec, x_init=None, Tmax=500, dt=1, xtol=1e-5, PLOT=False, verbose=False, silent=False):
         if x_init is None:
             x_init = np.zeros((self.dim,))
         dxdt = lambda x : self.dxdt(x, inp_vec)
-        x_fp, CONVG = Euler2fixedpt(dxdt, x_init, Tmax, dt, xtol=xtol, PLOT=PLOT)
-        if not CONVG:
+        x_fp, CONVG = Euler2fixedpt(dxdt, x_init, Tmax, dt, xtol=xtol, PLOT=PLOT, verbose=verbose, silent=silent)
+        if not CONVG and not silent:
             print('Did not reach fixed point.')
         #else:
         #    return x_fp
         return x_fp, CONVG
+
 
     def make_noise_cov(self, noise_pars):
         # the script assumes independent noise to E and I, and spatially uniform magnitude of noise
@@ -156,13 +170,14 @@ class _SSN_AMPAGABA_Base(_SSN_Base):
         """
         tau_s = np.squeeze(np.asarray(tau_s))
         assert tau_s.size <= 3 and tau_s.ndim == 1
-        self._tau_s = tau_s
+        self.tau_s = tau_s
         if tau_s.size == 3 and NMDAratio > 0:
-            self._NMDAratio = NMDAratio
+            self.NMDAratio = NMDAratio
         else:
-            self._NMDAratio = 0
+            self.NMDAratio = 0
 
         super(_SSN_AMPAGABA_Base, self).__init__(**kwargs)
+
 
     @property
     def dim(self):
@@ -170,52 +185,24 @@ class _SSN_AMPAGABA_Base(_SSN_Base):
 
     @property
     def num_rcpt(self):
-        if not hasattr(self, '_num_rcpt'):
-            self._num_rcpt = self._tau_s.size
-            if self._num_rcpt == 3 and self.NMDAratio == 0:
-                self._num_rcpt = 2
-        return self._num_rcpt
+        return self.tau_s.size
 
-    @property
-    def NMDAratio(self):
-        return self._NMDAratio
 
-    @NMDAratio.setter
-    def NMDAratio(self, value):
-        # if value > 0, make sure an NMDA time-constant is defined
-        if value > 0 and self._tau_s.size < 3:
-            raise ValueError("No NMDA time-constant defined! Change tau_s first to add NMDA constant.")
-        # if NMDAratio is going from 0 to nonzero or vice versa, then delete _num_rcpt and _Wrcpt (so they are made de novo when needed)
-        if (value == 0 and self._NMDAratio > 0) or (value > 0 and self._NMDAratio == 0):
-            del self._Wrcpt
-            del self._num_rcpt
-        self._NMDAratio = value
-
-    @property
-    def Wrcpt(self):
-        if not hasattr(self, '_Wrcpt'): # cache it in _Wrcpt once it's been created
-            W_AMPA = (1-self.NMDAratio)* np.hstack((self.W[:,:self.Ne], np.zeros((self.N,self.Ni)) ))
-            W_GABA = np.hstack((np.zeros((self.N,self.Ne)), self.W[:,self.Ne:]))
-            Wrcpt = [W_AMPA, W_GABA]
-            if self.NMDAratio > 0:
-                W_NMDA = self.NMDAratio/(1-self.NMDAratio) * W_AMPA
-                Wrcpt.append(W_NMDA)
-            self._Wrcpt = np.vstack(Wrcpt) # shape = (self.num_rcpt*self.N, self.N)
-        return self._Wrcpt
-
+    # Among receptor (non-"private") parameters/properties, only self.tau_s and self.NMDA_ratio can be set.
     @property
     def tau_s(self):
-        return self._tau_s  #[:self.num_rcpt]
+        return self._tau_s
 
     @tau_s.setter
     def tau_s(self, values):
+        if hasattr(self, '_tau_s_vec'):
+            del self._tau_s_vec
         self._tau_s = values
-        del self._tau_s_vec
 
     @property
     def tau_s_vec(self):
-        if not hasattr(self, '_tau_s_vec'): # cache it once it's been created
-            self._tau_s_vec = np.kron(self._tau_s[:self.num_rcpt], np.ones(self.N))
+        if not hasattr(self, '_tau_s_vec'): # cache it once it's been created; it's deleted if self.tau_s is changed
+            self._tau_s_vec = np.kron(self.tau_s, np.ones(self.N))
         return self._tau_s_vec
 
     @property
@@ -225,18 +212,57 @@ class _SSN_AMPAGABA_Base(_SSN_Base):
 
     @property
     def tau_AMPA(self):
-        return self._tau_s[0]
+        return self.tau_s[0]
 
     @property
     def tau_GABA(self):
-        return self._tau_s[1]
+        return self.tau_s[1]
 
     @property
     def tau_NMDA(self):
-        if len(self._tau_s) == 3:
-            return self._tau_s[2]
+        if len(self.tau_s) == 3:
+            return self.tau_s[2]
         else:
             return None
+
+    @property
+    def NMDAratio(self):
+        return self._NMDAratio
+
+    @NMDAratio.setter
+    def NMDAratio(self, value):
+        # if value > 0, make sure an NMDA time-constant is defined
+        if value > 0 and self.tau_s.size < 3:
+            raise ValueError("No NMDA time-constant defined! First change tau_s to add NMDA time constant.")
+        if hasattr(self, '_Wrcpt'):
+            del self._Wrcpt
+        self._NMDAratio = value
+
+
+    @property
+    def W(self):
+        return self._W
+
+    @W.setter
+    def W(self, value):
+        if hasattr(self, '_Wrcpt'):
+            del self._Wrcpt
+        self._W = value
+
+    @property
+    def Wrcpt(self):
+        # TODO: Wrcpt depends on self.N, .Ne and .Ni too, in addition to .NMDAratio & .W, but only changes in the latter delete _Wrcpt
+        if not hasattr(self, '_Wrcpt'): # cache it in _Wrcpt once it's been created;
+                                        # it's deleted if self.W or self.NMDA_ratio are changed.
+            W_AMPA = (1-self.NMDAratio)* np.hstack((self.W[:,:self.Ne], np.zeros((self.N,self.Ni)) ))
+            W_GABA = np.hstack((np.zeros((self.N,self.Ne)), self.W[:,self.Ne:]))
+            Wrcpt = [W_AMPA, W_GABA]
+            if self.NMDAratio > 0:
+                W_NMDA = self.NMDAratio/(1-self.NMDAratio) * W_AMPA
+                Wrcpt.append(W_NMDA)
+            self._Wrcpt = np.vstack(Wrcpt) # shape = (self.num_rcpt*self.N, self.N)
+        return self._Wrcpt
+
 
     def dvdt(self, v, inp_vec):
         """
@@ -248,8 +274,10 @@ class _SSN_AMPAGABA_Base(_SSN_Base):
         r = self.powlaw( v.reshape((self.num_rcpt, self.N)).sum(axis=0) )
         return ( -v + self.Wrcpt @ r + inp_vec ) / self.tau_s_vec
 
+
     def dxdt(self, x, inp_vec):
         return self.dvdt(x, inp_vec)
+
 
     def DCjacobian(self, r):
         """
@@ -261,7 +289,7 @@ class _SSN_AMPAGABA_Base(_SSN_Base):
                 np.tile( self.Wrcpt * Phi[None,:] , (1, self.num_rcpt)) ) # broadcasting so that gain (Phi) varies by 2nd (presynaptic) neural index, and does not depend on receptor type or post-synaptic (1st) neural index
 
 
-    def linear_power_spect(self, r_fp, noise_pars, freq_range, fnums, e_LFP,
+    def linear_power_spect(self, r_fp, noise_pars, freq_range, fnums, e_LFP=None,
                                gamma_range=[20,100], EIGS=False, EIGVECS=False):
         """
         Returns the power spectrum/a (PS) of "LFP" recorded on 1 or MULTIPLE
@@ -297,17 +325,22 @@ class _SSN_AMPAGABA_Base(_SSN_Base):
                 noise_pars.NMDAratio = 0; % of external noise fed to the NMDA channel (the rest goes to AMPA)
 
         example usage:
-        powspecs = ssn.linear_power_spect(r_fp, high_levels.NoisePars(), freq_range=[10,100], fnums=50, e_LFP)
+        powspecs = ssn.linear_power_spect(r_fp, NoisePars(), freq_range=[10,100], fnums=50, e_LFP)
         # where powspecs.shape = (e_LFP.shape[1], fnums) or, if e_LFP.ndims==1, (fnums,).
         """
+        # no reference to "self" beyond this first block
+        N, num_rcpt, tau_s_vec = self.N, self.num_rcpt, self.tau_s_vec
+        J = self.DCjacobian(r_fp) # relies on self.Wrcpt which can change.
+        if EIGS:
+            Jacob = self.jacobian(J) # np.kron(1/self.tau_s, np.ones(N))[:,None] * J  # equivalent to diag(tau_s) J (math)
         noise_sigsq, spatl_filt = self.make_noise_cov(noise_pars)
+
+        ones_rcpt = np.ones(num_rcpt)
+        noiseNMDA = 0 if num_rcpt<3 else noise_pars.NMDAratio
+        tau_s = np.diag(tau_s_vec) /1000 # convert to seconds
         tau_corr = noise_pars.corr_time  /1000 # convert to seconds
-        noiseNMDA = 0 if self.num_rcpt<3 else noise_pars.NMDAratio
-        tau_s = np.diag(self.tau_s_vec) /1000 # convert to seconds
 
-        J = self.DCjacobian(r_fp)
-
-        ones_rcpt = np.ones(self.num_rcpt)
+        e_LFP = np.isin(np.arange(N), [0]) if e_LFP is None else e_LFP # if not provided: single probe at 1st E cell
         if e_LFP.ndim > 1 and e_LFP.shape[1] > 1:  # case of many different LFP probes (stacked along 2nd axis of e_LFP)
             ones_rcpt = ones_rcpt[:, None]
             noise_sigsq = noise_sigsq[:, None]
@@ -315,15 +348,15 @@ class _SSN_AMPAGABA_Base(_SSN_Base):
 
         # calculate LFP power spectrum/a:
         fs = np.linspace(*freq_range,fnums) # grid of frequencies in Hz
+        ws = 2 * np.pi * fs # angular freq's (omega's) in Hz
 
-        ws = 2*np.pi * fs # angular freq's (omega's) in Hz
         LFP_spectra = []
         for w in ws:
             vecE = np.linalg.solve( (-1j*w * tau_s - J).T.conj() , e_LFP1) # self.inv_G(w,J).T.conj() @ e_LFP1
 
             # ASSUME noise is only coming thru AMPA and NMDA channels (first and last N inds, resp)
             # AND both channels get same exact realization of noise, up to scaling (so noise cov is rank-deficient, with rank ssn.N instead of ssn.dim)
-            vecE1 = (1-noiseNMDA) * vecE[:self.N]  + noiseNMDA * vecE[-self.N:]
+            vecE1 = (1-noiseNMDA) * vecE[:N]  + noiseNMDA * vecE[-N:]
             # account for spatial correlations in noise input
             if spatl_filt.size > 1:
                 vecE = spatl_filt.T  @ vecE1
@@ -342,7 +375,6 @@ class _SSN_AMPAGABA_Base(_SSN_Base):
 
         # calculate Jacobian and its eigenvalues
         if EIGS:
-            Jacob = self.jacobian(J) # np.kron(1/self.tau_s, np.ones(self.N))[:,None] * J  # equivalent to diag(tau_s) J (math)
             if EIGVECS:
                 JacobLams = np.linalg.eig(Jacob)
             else:
@@ -352,14 +384,9 @@ class _SSN_AMPAGABA_Base(_SSN_Base):
 
         return LFP_spectra.T, fs, gamma_powers, JacobLams, Jacob
 
-        # # using numba compiled code:
-        # Jacob = None if not EIGS else self.jacobian(J) # np.kron(1/ssn.tau_s, np.ones(ssn.N))[:,None] * J  # equivalent to diag(tau_s) J (math)
-        # shp = (len(fs),) if e_LFP1.ndim == 1 else (len(fs), e_LFP1.shape[1])
-        # return SSN_power_spec.linear_power_spect_loop(self.N, fs, 0*1j + e_LFP1, shp,
-        #                         J, noise_sigsq, spatl_filt, noiseNMDA, tau_s,
-        #                         tau_corr, np.asarray(gamma_range), EIGS, 0*1j + Jacob)
 
 # ================ N neuron uniform all-2-all models ===========================
+
 
 class SSNUniform(_SSN_Base):
     def __init__(self, n, k, tauE, tauI, Jee, Jei, Jie, Jii,
@@ -412,6 +439,7 @@ class SSNHomogRing(_SSN_Base):
         self.ori_vec = np.tile(np.linspace(0, L, Ne+1)[:-1], (2,))
         self.make_W(J_2x2, s_2x2, L1normalize=L1normalize) #, L, Ne, Ni)
 
+
     @property
     def neuron_params(self):
         return dict(n=self.n, k=self.k,
@@ -429,9 +457,9 @@ class SSNHomogRing(_SSN_Base):
     def ori_vec_I(self):
         return self.ori_vec[self.EI == b"I"]
 
+
     def make_W(self, J_2x2, s_2x2, L=None, dist=None, 
                Ne=None, Ni=None, L1normalize=False):
-        from util import toeplitz
 
         L = self.L if L is None else L
         dist = self.dist if dist is None else dist
@@ -464,7 +492,8 @@ class SSNHomogRing(_SSN_Base):
         self.distsq = distsq
         self.dist = dist
 
-        return W
+        return self.W
+
 
     def make_grating_input(self, ori_s, sig_EF=32, sig_IF=None, gE=1, gI=1, contrast=1, dist=None, L=None):
         """
@@ -486,6 +515,7 @@ class SSNHomogRing(_SSN_Base):
                   gI * np.exp(-distsq(self.ori_vec_I - ori_s)/(2*sig_IF**2))))
         return contrast * inp
 
+
     def make_noise_cov(self, noise_pars):
         # the script assumes independent noise to E and I, and spatially uniform magnitude of noise
         noise_sigsq = np.hstack( (noise_pars.stdevE**2 * np.ones(self.Ne),
@@ -496,7 +526,7 @@ class SSNHomogRing(_SSN_Base):
             dOri = np.abs(OriVec)
             L = OriVec.size * np.diff(OriVec[:2])
             dOri[dOri > L/2] = L-dOri[dOri > L/2] # distance on circle/periodic B.C.
-            spatl_filt = toeplitz(np.exp(-(dOri**2)/(2*noise_pars.corr_length**2))/np.sqrt(2*pi)/noise_pars.corr_length*L/self.Ne)
+            spatl_filt = toeplitz(np.exp(-(dOri**2)/(2*noise_pars.corr_length**2))/np.sqrt(2*np.pi)/noise_pars.corr_length*L/self.Ne)
             sigTau1Sprd1 = 0.394 # roughly the std of spatially and temporally filtered noise when the white seed is randn(self.Nthetas,Nt)/sqrt(dt) and corr_time=corr_length = 1 (ms or angle, respectively)
             spatl_filt = spatl_filt * np.sqrt(noise_pars.corr_length/2)/sigTau1Sprd1 # for the sake of output
             spatl_filt = np.kron(np.eye(2), spatl_filt) # 2 for E/I
@@ -518,7 +548,7 @@ class SSNHomogRing_AMPAGABA(SSNHomogRing, _SSN_AMPAGABA_Base):
 class SSN2DTopoV1(_SSN_Base):
     _Lring = 180
 
-    def __init__(self, n, k, tauE, tauI, grid_pars, conn_pars, **kwargs):
+    def __init__(self, n, k, tauE, tauI, grid_pars, conn_pars, ori_map=None, **kwargs):
         Ni = Ne = grid_pars.gridsize_Nx**2
         tau_vec = np.hstack([tauE * np.ones(Ne), tauI * np.ones(Ni)])
 
@@ -527,9 +557,10 @@ class SSN2DTopoV1(_SSN_Base):
 
         self.grid_pars = grid_pars
         self.conn_pars = conn_pars
-        self._make_maps(grid_pars)
+        self._make_maps(grid_pars, ori_map)
         if conn_pars is not None: # conn_pars = None allows for ssn-object initialization without a W
             self.make_W(**conn_pars)
+
 
     @property
     def neuron_params(self):
@@ -540,17 +571,22 @@ class SSN2DTopoV1(_SSN_Base):
         return np.vstack([self.x_vec, self.y_vec, self.ori_vec]).T
 
     @property
-    def center_inds(self):
-        """ indices of center-E and center-I neurons """
-        return np.where((self.x_vec==0) & (self.y_vec==0))[0]
-
-    @property
     def x_vec_degs(self):
         return self.x_vec / self.grid_pars.magnif_factor
 
     @property
     def y_vec_degs(self):
         return self.y_vec / self.grid_pars.magnif_factor
+
+    @property
+    def ori_vec(self):
+        return np.tile(self.ori_map.ravel(), (2,))
+
+    @property
+    def center_inds(self):
+        """ indices of center-E and center-I neurons """
+        return np.where((self.x_vec==0) & (self.y_vec==0))[0]
+
 
     def xys2inds(self, xys=[[0,0]], units="degree"):
         """
@@ -570,6 +606,7 @@ class SSN2DTopoV1(_SSN_Base):
             inds.append([np.argmin(distsq[:self.Ne]), self.Ne + np.argmin(distsq[self.Ne:])])
         return np.asarray(inds).T
 
+
     def xys2Emapinds(self, xys=[[0,0]], units="degree"):
         """
         (i,j) of E neurons at location (x,y) (by default in degrees).
@@ -584,6 +621,7 @@ class SSN2DTopoV1(_SSN_Base):
                                             i // self.grid_pars.gridsize_Nx])
         return vecind2mapind(self.xys2inds(xys)[0])
 
+
     def vec2map(self, vec):
         assert vec.ndim == 1
         Nx = self.grid_pars.gridsize_Nx
@@ -594,16 +632,18 @@ class SSN2DTopoV1(_SSN_Base):
                    np.reshape(vec[self.Ne:], (Nx, Nx)))
         return map
 
-    def _make_maps(self, grid_pars=None):
+
+    def _make_maps(self, grid_pars=None, ori_map=None):
         if grid_pars is None:
             grid_pars = self.grid_pars
         else:
             self.grid_pars = grid_pars
 
         self._make_retinmap()
-        self._make_orimap()
+        self.ori_map = self._make_orimap() if ori_map is None else ori_map
 
         return self.x_map, self.y_map, self.ori_map
+
 
     def _make_retinmap(self, grid_pars=None):
         """
@@ -631,6 +671,7 @@ class SSN2DTopoV1(_SSN_Base):
         self.x_vec = np.tile(X.ravel(), (2,))
         self.y_vec = np.tile(Y.ravel(), (2,))
         return self.x_map, self.y_map
+
 
     def _make_orimap(self, hyper_col=None, nn=30, X=None, Y=None):
         '''
@@ -663,8 +704,9 @@ class SSN2DTopoV1(_SSN_Base):
         # #for debugging/testing:
         # self.ori_map = 180 * (self.y_map - self.y_map.min())/(self.y_map.max() - self.y_map.min())
         # self.ori_map[self.ori_map.shape[0]//2+1:,:] = 180
-        self.ori_vec = np.tile(self.ori_map.ravel(), (2,))
+
         return self.ori_map
+
 
     def _make_distances(self, PERIODIC):
         Lx = Ly = self.grid_pars.gridsize_mm
@@ -684,9 +726,9 @@ class SSN2DTopoV1(_SSN_Base):
 
         return xy_dist, ori_dist
 
-    def make_W(self, J_2x2, s_2x2, p_local, sigma_oris=45, Jnoise=0,
-                Jnoise_GAUSSIAN=False, MinSyn=1e-4, CellWiseNormalized=True,
-                                                    PERIODIC=True): #, prngKey=0):
+
+    def make_W(self, J_2x2, s_2x2, p_local, sigma_oris=45, PERIODIC=True, Jnoise=0,
+                Jnoise_GAUSSIAN=False, MinSyn=1e-4, CellWiseNormalized=True): #, prngKey=0):
         """
         make the full recurrent connectivity matrix W
         In:
@@ -698,6 +740,7 @@ class SSN2DTopoV1(_SSN_Base):
         Output/side-effects:
         self.W
         """
+        # set self.conn_pars to the dictionary of inputs to make_W
         conn_pars = locals()
         conn_pars.pop("self")
         self.conn_pars = conn_pars
@@ -707,6 +750,8 @@ class SSN2DTopoV1(_SSN_Base):
             ori_dist = self.ori_dist
         else:
             xy_dist, ori_dist = self._make_distances(PERIODIC)
+
+        if np.isscalar(s_2x2): s_2x2 = s_2x2 * np.ones((2,2))
 
         if np.isscalar(sigma_oris): sigma_oris = sigma_oris * np.ones((2,2))
 
@@ -732,14 +777,16 @@ class SSN2DTopoV1(_SSN_Base):
                 # sparsify (set small weights to zero)
                 W = np.where(W < MinSyn, 0, W) # what's the point of this if not using sparse matrices
 
-                # row-wise normalize
-                tW = np.sum(W, axis=1)
-                if not CellWiseNormalized:
-                    tW = np.mean(tW)
-                W = W / tW
+                # normalize (do it row-by-row if CellWiseNormalized, such that all row-sums are 1
+                #            -- other wise only the average row-sum is 1)
+                sW = np.sum(W, axis=1)
+                if CellWiseNormalized:
+                    W = W / sW[:, None]
+                else:
+                    W = W / sW.mean()
 
                 # for E projections, add the local part
-                # NOTE: alterntaively could do this before adding noise & normalizing
+                # NOTE: this doesn't perturb the above normalization: convex combination of two "probability" vecs
                 if b == 0:
                     W = p_local[a] * np.eye(*W.shape) + (1-p_local[a]) * W
 
@@ -747,6 +794,7 @@ class SSN2DTopoV1(_SSN_Base):
 
         self.W = np.block(Wblks)
         return self.W
+
 
     def _make_inp_ori_dep(self, ONLY_E=False, ori_s=None, sig_ori_EF=32, sig_ori_IF=None, gE=1, gI=1):
         """
@@ -768,6 +816,7 @@ class SSN2DTopoV1(_SSN_Base):
 
         return ori_fac
 
+
     def make_grating_input(self, radius_s, sigma_RF=0.4, ONLY_E=False,
             ori_s=None, sig_ori_EF=32, sig_ori_IF=None, gE=1, gI=1, contrast=1):
         """
@@ -788,6 +837,7 @@ class SSN2DTopoV1(_SSN_Base):
         spat_fac = sigmoid((radius_s - r_vec)/sigma_RF)
 
         return contrast * ori_fac * spat_fac
+
 
     def make_gabor_input(self, sigma_Gabor=0.5, ONLY_E=False,
             ori_s=None, sig_ori_EF=32, sig_ori_IF=None, gE=1, gI=1, contrast=1):
@@ -818,6 +868,7 @@ class SSN2DTopoV1(_SSN_Base):
     #
     #     spatl_filt = ...
 
+
     def make_eLFP_from_inds(self, LFPinds):
         """
         makes a single LFP electrode signature (normalized spatial weight
@@ -832,6 +883,7 @@ class SSN2DTopoV1(_SSN_Base):
         # eI = 1/len(LFPinds) * np.isin(np.arange(self.N) - self.Ne, LFPinds) # assuming elements of LFPinds are all smaller than self.Ne, e_LFP will only have 1's on I elements
 
         return e_LFP
+
 
     def make_eLFP_from_xy(self, probe_xys, LFPradius=0.2, unit_xys="degree", unit_rad="mm"):
         """
