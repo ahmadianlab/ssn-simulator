@@ -1,11 +1,7 @@
 import numpy as np
 from util import Euler2fixedpt, toeplitz
-#from SSN_power_spec import linear_power_spect_loop
-import SSN_power_spec
-
 
 # ============================  base classes ===================================
-
 
 class _SSN_Base(object):
     def __init__(self, n, k, Ne, Ni, tau_vec=None, W=None):
@@ -186,7 +182,6 @@ class _SSN_AMPAGABA_Base(_SSN_Base):
     @property
     def num_rcpt(self):
         return self.tau_s.size
-
 
     # Among receptor (non-"private") parameters/properties, only self.tau_s and self.NMDA_ratio can be set.
     @property
