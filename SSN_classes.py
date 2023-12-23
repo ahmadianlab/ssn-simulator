@@ -323,28 +323,26 @@ class _SSN_AMPAGABA_Base(_SSN_Base):
         powspecs = ssn.linear_power_spect(r_fp, NoisePars(), freq_range=[10,100], fnums=50, e_LFP)
         # where powspecs.shape = (e_LFP.shape[1], fnums) or, if e_LFP.ndims==1, (fnums,).
         """
-        # no reference to "self" beyond this first block
         N, num_rcpt, tau_s_vec = self.N, self.num_rcpt, self.tau_s_vec
-        J = self.DCjacobian(r_fp) # relies on self.Wrcpt which can change.
-        if EIGS:
-            Jacob = self.jacobian(J) # np.kron(1/self.tau_s, np.ones(N))[:,None] * J  # equivalent to diag(tau_s) J (math)
+
+        J = self.DCjacobian(r_fp)
+
         noise_sigsq, spatl_filt = self.make_noise_cov(noise_pars)
 
         ones_rcpt = np.ones(num_rcpt)
-        noiseNMDA = 0 if num_rcpt<3 else noise_pars.NMDAratio
-        tau_s = np.diag(tau_s_vec) /1000 # convert to seconds
-        tau_corr = noise_pars.corr_time  /1000 # convert to seconds
-
         e_LFP = np.isin(np.arange(N), [0]) if e_LFP is None else e_LFP # if not provided: single probe at 1st E cell
         if e_LFP.ndim > 1 and e_LFP.shape[1] > 1:  # case of many different LFP probes (stacked along 2nd axis of e_LFP)
             ones_rcpt = ones_rcpt[:, None]
             noise_sigsq = noise_sigsq[:, None]
         e_LFP1 = np.kron(ones_rcpt, e_LFP) # this tensor product by ones(...) is because of the unweighted sum of currents of different types inside the neuronal nonlinearity
 
+        noiseNMDA = 0 if num_rcpt<3 else noise_pars.NMDAratio
+        tau_s = np.diag(tau_s_vec) /1000 # convert to seconds
+        tau_corr = noise_pars.corr_time  /1000 # convert to seconds
+
         # calculate LFP power spectrum/a:
         fs = np.linspace(*freq_range,fnums) # grid of frequencies in Hz
         ws = 2 * np.pi * fs # angular freq's (omega's) in Hz
-
         LFP_spectra = []
         for w in ws:
             vecE = np.linalg.solve( (-1j*w * tau_s - J).T.conj() , e_LFP1) # self.inv_G(w,J).T.conj() @ e_LFP1
@@ -370,6 +368,7 @@ class _SSN_AMPAGABA_Base(_SSN_Base):
 
         # calculate Jacobian and its eigenvalues
         if EIGS:
+            Jacob = self.jacobian(J) # np.kron(1/self.tau_s, np.ones(N))[:,None] * J  # equivalent to diag(tau_s) J (math)
             if EIGVECS:
                 JacobLams = np.linalg.eig(Jacob)
             else:
