@@ -11,10 +11,10 @@ class _SSN_Base(object):
         self.Ne = Ne
         self.Ni = Ni
         self.N = self.Ne + self.Ni
-        # # set vector of E/I types of different neurons
-        # self.EI = np.chararray((self.N,), itemsize=1)
-        # self.EI[:Ne] = b"E"
-        # self.EI[Ne:] = b"I"
+        # set vector of E/I types of different neurons
+        self.EI = np.chararray((self.N,), itemsize=1)
+        self.EI[:Ne] = b"E"
+        self.EI[Ne:] = b"I"
         # set vector of neurons' rate time-constants. shape: (N,)
         if tau_vec is not None:
             self.tau_vec = tau_vec 
@@ -538,28 +538,26 @@ class SSNHomogRing_AMPAGABA(SSNHomogRing, _SSN_AMPAGABA_Base):
 
 @dataclass
 class GridPars:
-    gridsize_Nx: int # grid-points across each edge
-    gridsize_deg: float # edge length in degrees
-    magnif_factor: float # mm/deg
-    hyper_col: float # mm
-#    gridsize_mm: float = None
-#    dx: float = None
+    gridsize_Nx: int # number of grid-points across each edge of the 2D retinotopic grid
+    gridsize_deg: float # edge length in degrees of visual angle
+    magnif_factor: float # cortical magnification factor in mm/deg
+    hyper_col: float # hypercolumn size (i.e. period of orientation map) in mm
+#    gridsize_mm: float = None # = gridsize_deg * magnif_factor
+#    dx: float = None # = gridsize_mm / (gridsize_Nx - 1)
 
 class SSN2DTopoV1(_SSN_Base):
     _Lring = 180
 
     def __init__(self, n, k, tauE, tauI, grid_pars, conn_pars,
                  ori_map=None, **kwargs):
+        if isinstance(grid_pars, dict):
+            grid_pars = GridPars(**grid_pars)
         Ni = Ne = grid_pars.gridsize_Nx**2
         tau_vec = np.hstack([tauE * np.ones(Ne), tauI * np.ones(Ni)])
 
         super(SSN2DTopoV1, self).__init__(n=n, k=k, Ne=Ne, Ni=Ni,
                                     tau_vec=tau_vec, **kwargs)
-
-        if isinstance(grid_pars, dict):
-            self.grid_pars = GridPars(**grid_pars)
-        else:
-            self.grid_pars = grid_pars
+        self.grid_pars = grid_pars
         self.conn_pars = conn_pars
         self._make_maps(grid_pars, ori_map)
         if conn_pars is not None: # conn_pars = None allows for ssn-object initialization without a W
