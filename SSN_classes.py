@@ -1,5 +1,6 @@
 import numpy as np
 from util import Euler2fixedpt, toeplitz
+from dataclasses import dataclass
 
 # ============================  base classes ===================================
 
@@ -534,6 +535,16 @@ class SSNHomogRing_AMPAGABA(SSNHomogRing, _SSN_AMPAGABA_Base):
 
 
 # =========================== 2D topographic models ============================
+
+@dataclass
+class GridPars:
+    gridsize_Nx: int # grid-points across each edge
+    gridsize_deg: float # edge length in degrees
+    magnif_factor: float # mm/deg
+    hyper_col: float # mm
+#    gridsize_mm: float = None
+#    dx: float = None
+
 class SSN2DTopoV1(_SSN_Base):
     _Lring = 180
 
@@ -545,7 +556,10 @@ class SSN2DTopoV1(_SSN_Base):
         super(SSN2DTopoV1, self).__init__(n=n, k=k, Ne=Ne, Ni=Ni,
                                     tau_vec=tau_vec, **kwargs)
 
-        self.grid_pars = grid_pars
+        if isinstance(grid_pars, dict):
+            self.grid_pars = GridPars(**grid_pars)
+        else:
+            self.grid_pars = grid_pars
         self.conn_pars = conn_pars
         self._make_maps(grid_pars, ori_map)
         if conn_pars is not None: # conn_pars = None allows for ssn-object initialization without a W
