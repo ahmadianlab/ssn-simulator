@@ -10,19 +10,16 @@ class _SSN_Base(object):
         self.Ne = Ne
         self.Ni = Ni
         self.N = self.Ne + self.Ni
-        self.EI = np.chararray((self.N,), itemsize=1)
-        self.EI[:Ne] = b"E"
-        self.EI[Ne:] = b"I"
+        # # set vector of E/I types of different neurons
+        # self.EI = np.chararray((self.N,), itemsize=1)
+        # self.EI[:Ne] = b"E"
+        # self.EI[Ne:] = b"I"
+        # set vector of neurons' rate time-constants. shape: (N,)
         if tau_vec is not None:
-            self.tau_vec = tau_vec # rate time-consants of neurons. shape: (N,)
-        # elif  not hasattr(self, "tau_vec"):
-        #     self.tau_vec = np.random.rand(N) * 20 # in ms
+            self.tau_vec = tau_vec 
+        # set connectivity matrix. shape: (N, N)            
         if W is not None:
-            self.W = W # connectivity matrix. shape: (N, N)
-        # elif  not hasattr(self, "W"):
-        #     W = np.random.rand(N,N) / np.sqrt(self.N)
-        #     sign_vec = np.hstack(np.ones(self.Ne), -np.ones(self.Ni))
-        #     self.W = W * sign_vec[None, :] # to respect Dale
+            self.W = W 
 
 
     @property
@@ -38,14 +35,11 @@ class _SSN_Base(object):
         """ time constants for the generalized state-vector, x """
         return self.tau_vec
 
-
     def powlaw(self, u):
         return  self.k * np.maximum(0,u)**self.n
 
-
     def drdt(self, r, inp_vec):
         return ( -r + self.powlaw(self.W @ r + inp_vec) ) / self.tau_vec
-
 
     def drdt_multi(self, r, inp_vec):
         """
@@ -54,7 +48,6 @@ class _SSN_Base(object):
         """
         return (( -r + self.powlaw(self.W @ r + inp_vec) ).T / self.tau_vec ).T
 
-
     def dxdt(self, x, inp_vec):
         """
         allowing for descendent SSN types whose state-vector, x, is different
@@ -62,14 +55,11 @@ class _SSN_Base(object):
         """
         return self.drdt(x, inp_vec)
 
-
     def gains_from_v(self, v):
         return self.n * self.k * np.maximum(0,v)**(self.n-1)
 
-
     def gains_from_r(self, r):
         return self.n * self.k**(1/self.n) * r**(1-1/self.n)
-
 
     def DCjacobian(self, r):
         """
@@ -78,7 +68,6 @@ class _SSN_Base(object):
         """
         Phi = self.gains_from_r(r)
         return -np.eye(self.N) + Phi[:, None] * self.W
-
 
     def jacobian(self, DCjacob=None, r=None):
         """
@@ -89,11 +78,9 @@ class _SSN_Base(object):
             DCjacob = self.DCjacobian(r)
         return DCjacob / self.tau_x_vec[:, None] # equivalent to np.diag(tau_x_vec) * DCjacob
 
-
     def jacobian_eigvals(self, DCjacob=None, r=None):
         Jacob = self.jacobian(DCjacob=DCjacob, r=r)
         return np.linalg.eigvals(Jacob)
-
 
     def inv_G(self, omega, DCjacob, r=None):
         """
@@ -106,29 +93,31 @@ class _SSN_Base(object):
         return -1j*omega * np.diag(self.tau_x_vec) - DCjacob
 
 
-    def fixed_point_r(self, inp_vec, r_init=None, Tmax=500, dt=1, xtol=1e-5, PLOT=False, verbose=False, silent=False):
+    def fixed_point_r(self, inp_vec, r_init=None, Tmax=500, dt=1, xtol=1e-5, xmin=1e-0,
+                      PLOT=False, verbose=False, silent=False):
         if r_init is None:
-            r_init = np.zeros(inp_vec.shape) # np.zeros((self.N,))
-        drdt = lambda r : self.drdt(r, inp_vec)
+            r_init = np.zeros(inp_vec.shape)
+        drdt = lambda r: self.drdt(r, inp_vec)
         if inp_vec.ndim > 1:
-            drdt = lambda r : self.drdt_multi(r, inp_vec)
-        r_fp, CONVG = Euler2fixedpt(drdt, r_init, Tmax, dt, xtol=xtol, PLOT=PLOT, verbose=verbose, silent=silent)
+            drdt = lambda r: self.drdt_multi(r, inp_vec)
+        r_fp, CONVG = Euler2fixedpt(drdt, r_init, Tmax, dt, xtol=xtol, xmin=xmin,
+                                    PLOT=PLOT, verbose=verbose, silent=silent)
         if not CONVG and not silent:
             print('Did not reach fixed point.')
-        #else:
-        #    return r_fp
+
         return r_fp, CONVG
 
 
-    def fixed_point(self, inp_vec, x_init=None, Tmax=500, dt=1, xtol=1e-5, PLOT=False, verbose=False, silent=False):
+    def fixed_point(self, inp_vec, x_init=None, Tmax=500, dt=1, xtol=1e-5, xmin=1e-0,
+                    PLOT=False, verbose=False, silent=False):
         if x_init is None:
             x_init = np.zeros((self.dim,))
-        dxdt = lambda x : self.dxdt(x, inp_vec)
-        x_fp, CONVG = Euler2fixedpt(dxdt, x_init, Tmax, dt, xtol=xtol, PLOT=PLOT, verbose=verbose, silent=silent)
+        dxdt = lambda x: self.dxdt(x, inp_vec)
+        x_fp, CONVG = Euler2fixedpt(dxdt, x_init, Tmax, dt, xtol=xtol, xmin=xmin,
+                                    PLOT=PLOT, verbose=verbose, silent=silent)
         if not CONVG and not silent:
             print('Did not reach fixed point.')
-        #else:
-        #    return x_fp
+
         return x_fp, CONVG
 
 
@@ -148,9 +137,9 @@ class _SSN_AMPAGABA_Base(_SSN_Base):
     suggested by Fourcaud and Brunel (2002).
     Convention for indexing of state-vector v (which is 2N or 3N dim)
     is according to kron(receptor_type_index, neural_index).
-    """
-    def __init__(self,*, tau_s=[4,5,100], NMDAratio=0.4, **kwargs):
-        """
+
+    At construction, provide `tau_s` and `NMDAratio` (scalar) in addition to
+    parameters for the non-AMPAGABA version of this SSN class:
         tau_s = [tau_AMPA, tau_GABA, tau_NMDA] or [tau_AMPA, tau_GABA]
           decay time-consants for synaptic currents of different receptor types.
         NMDAratio: scalar
@@ -163,7 +152,8 @@ class _SSN_AMPAGABA_Base(_SSN_Base):
          tau_s can have length == 3, and yet if self.NMDAratio is 0,
          then num_rcpt will be 2, and dynamical system will be 2 * self.N dimensional.
          I.e. NMDA components will not be simulated even though a NMDA time-constant is defined.
-        """
+    """
+    def __init__(self, *, tau_s=[4,5,100], NMDAratio=0.4, **kwargs):
         tau_s = np.squeeze(np.asarray(tau_s))
         assert tau_s.size <= 3 and tau_s.ndim == 1
         self.tau_s = tau_s
@@ -183,7 +173,12 @@ class _SSN_AMPAGABA_Base(_SSN_Base):
     def num_rcpt(self):
         return self.tau_s.size
 
-    # Among receptor (non-"private") parameters/properties, only self.tau_s and self.NMDA_ratio can be set.
+    # Among receptor (non-"private") parameters/properties,
+    # only self.tau_s and self.NMDA_ratio can be set.
+    # We cache certain O(N) or O(N^2)-size vectors or matrices
+    # depending on them, once constructed, and for this reason .tau_s
+    # and .NMDAratio are coded as properties so that when they
+    # are given new values the cached vectors/matrices are deleted.
     @property
     def tau_s(self):
         return self._tau_s
@@ -542,7 +537,8 @@ class SSNHomogRing_AMPAGABA(SSNHomogRing, _SSN_AMPAGABA_Base):
 class SSN2DTopoV1(_SSN_Base):
     _Lring = 180
 
-    def __init__(self, n, k, tauE, tauI, grid_pars, conn_pars, ori_map=None, **kwargs):
+    def __init__(self, n, k, tauE, tauI, grid_pars, conn_pars,
+                 ori_map=None, **kwargs):
         Ni = Ne = grid_pars.gridsize_Nx**2
         tau_vec = np.hstack([tauE * np.ones(Ne), tauI * np.ones(Ni)])
 
@@ -651,9 +647,9 @@ class SSN2DTopoV1(_SSN_Base):
             self.grid_pars.gridsize_mm = grid_pars.gridsize_deg * grid_pars.magnif_factor
         Lx = Ly = self.grid_pars.gridsize_mm
         Nx = Ny = grid_pars.gridsize_Nx
-        dx = dy = Lx/(Nx - 1)
+        dx = Lx/(Nx - 1)
         self.grid_pars.dx = dx # in mm
-        self.grid_pars.dy = dy # in mm
+        # self.grid_pars.dy = dx # in mm
 
         xs = np.linspace(0, Lx, Nx)
         ys = np.linspace(0, Ly, Ny)
@@ -687,8 +683,8 @@ class SSN2DTopoV1(_SSN_Base):
         z = np.zeros_like(X)
         for j in range(nn):
             kj = np.array([np.cos(j * np.pi/nn), np.sin(j * np.pi/nn)]) * 2*np.pi/(hyper_col)
-            sj = 2 * np.random.randint(0, 2)-1 #random number that's either + or -1.
-            phij = np.random.rand()*2*np.pi
+            sj = 2 * np.random.randint(0, 2) - 1 #random number that's either + or -1.
+            phij = np.random.rand() * 2 * np.pi
 
             tmp = (X*kj[0] + Y*kj[1]) * sj + phij
             z = z + np.exp(1j * tmp)
@@ -752,20 +748,20 @@ class SSN2DTopoV1(_SSN_Base):
         if np.isscalar(p_local) or len(p_local) == 1:
             p_local = np.asarray(p_local) * np.ones(2)
 
-        Wblks = [[1,1],[1,1]]
+        Wblks = [[1,1], [1,1]]
         # loop over post- (a) and pre-synaptic (b) cell-types
         for a in range(2):
             for b in range(2):
                 if b == 0: # E projections
-                    W = np.exp(-xy_dist/s_2x2[a,b] -ori_dist**2/(2*sigma_oris[a,b]**2))
+                    W = np.exp(-xy_dist/s_2x2[a,b] - ori_dist**2/(2*sigma_oris[a,b]**2))
                 elif b == 1: # I projections
-                    W = np.exp(-xy_dist**2/(2*s_2x2[a,b]**2) -ori_dist**2/(2*sigma_oris[a,b]**2))
+                    W = np.exp(-xy_dist**2/(2*s_2x2[a,b]**2) - ori_dist**2/(2*sigma_oris[a,b]**2))
 
                 if Jnoise > 0: # add some noise
                     if Jnoise_GAUSSIAN:
                         jitter = np.random.standard_normal(W.shape)
                     else:
-                        jitter = 2* np.random.random(W.shape) - 1
+                        jitter = 2 * np.random.random(W.shape) - 1
                     W = (1 + Jnoise * jitter) * W
 
                 # sparsify (set small weights to zero)
