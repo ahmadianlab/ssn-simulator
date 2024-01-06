@@ -558,8 +558,10 @@ class SSN2DTopoV1(_SSN_Base):
         super(SSN2DTopoV1, self).__init__(n=n, k=k, Ne=Ne, Ni=Ni,
                                     tau_vec=tau_vec, **kwargs)
         self.grid_pars = grid_pars
+        self._make_retinmap()
+        self.ori_map = self._make_orimap() if ori_map is None else ori_map
+
         self.conn_pars = conn_pars
-        self._make_maps(grid_pars, ori_map)
         if conn_pars is not None: # conn_pars = None allows for ssn-object initialization without a W
             self.make_W(**conn_pars)
 
@@ -635,18 +637,6 @@ class SSN2DTopoV1(_SSN_Base):
         return map
 
 
-    def _make_maps(self, grid_pars=None, ori_map=None):
-        if grid_pars is None:
-            grid_pars = self.grid_pars
-        else:
-            self.grid_pars = grid_pars
-
-        self._make_retinmap()
-        self.ori_map = self._make_orimap() if ori_map is None else ori_map
-
-        return self.x_map, self.y_map, self.ori_map
-
-
     def _make_retinmap(self, grid_pars=None):
         """
         make square grid of locations with X and Y retinotopic maps
@@ -659,13 +649,13 @@ class SSN2DTopoV1(_SSN_Base):
             self.grid_pars.gridsize_mm = grid_pars.gridsize_deg * grid_pars.magnif_factor
         Lx = Ly = self.grid_pars.gridsize_mm
         Nx = Ny = grid_pars.gridsize_Nx
-        dx = Lx/(Nx - 1)
+        dx = Lx / (Nx - 1)
         self.grid_pars.dx = dx # in mm
         # self.grid_pars.dy = dx # in mm
 
         xs = np.linspace(0, Lx, Nx)
         ys = np.linspace(0, Ly, Ny)
-        [X, Y] = np.meshgrid(xs - xs[len(xs)//2], ys - ys[len(ys)//2]) # doing it this way, as opposed to using np.linspace(-Lx/2, Lx/2, Nx) (for which this fails for even Nx), guarantees that there is always a pixel with x or y == 0
+        [X, Y] = np.meshgrid(xs - xs[len(xs) // 2], ys - ys[len(ys) // 2]) # doing it this way, as opposed to using np.linspace(-Lx/2, Lx/2, Nx) (for which this fails for even Nx), guarantees that there is always a pixel with x or y == 0
         Y = -Y # without this Y decreases going upwards
 
         self.x_map = X
@@ -698,22 +688,19 @@ class SSN2DTopoV1(_SSN_Base):
             sj = 2 * np.random.randint(0, 2) - 1 #random number that's either + or -1.
             phij = np.random.rand() * 2 * np.pi
 
-            tmp = (X*kj[0] + Y*kj[1]) * sj + phij
+            tmp = (X * kj[0] + Y * kj[1]) * sj + phij
             z = z + np.exp(1j * tmp)
 
         # ori map with preferred orientations in the range (0, _Lring] (i.e. (0, 180] by default)
         self.ori_map = (np.angle(z) + np.pi) * SSN2DTopoV1._Lring/(2*np.pi)
-        # #for debugging/testing:
-        # self.ori_map = 180 * (self.y_map - self.y_map.min())/(self.y_map.max() - self.y_map.min())
-        # self.ori_map[self.ori_map.shape[0]//2+1:,:] = 180
 
         return self.ori_map
 
 
     def _make_distances(self, PERIODIC):
-        Lx = Ly = self.grid_pars.gridsize_mm
         absdiff_ring = lambda d_x, L: np.minimum(np.abs(d_x), L - np.abs(d_x))
         if PERIODIC:
+            Lx = self.grid_pars.gridsize_mm
             absdiff_x = absdiff_y = lambda d_x: absdiff_ring(d_x, Lx + self.grid_pars.dx)
         else:
             absdiff_x = absdiff_y = lambda d_x: np.abs(d_x)
@@ -747,18 +734,18 @@ class SSN2DTopoV1(_SSN_Base):
         conn_pars.pop("self")
         self.conn_pars = conn_pars
 
-        if hasattr(self, "xy_dist") and hasattr(self, "ori_dist"):
-            xy_dist = self.xy_dist
-            ori_dist = self.ori_dist
-        else:
-            xy_dist, ori_dist = self._make_distances(PERIODIC)
-
         if np.isscalar(s_2x2): s_2x2 = s_2x2 * np.ones((2,2))
 
         if np.isscalar(sigma_oris): sigma_oris = sigma_oris * np.ones((2,2))
 
         if np.isscalar(p_local) or len(p_local) == 1:
             p_local = np.asarray(p_local) * np.ones(2)
+
+        if hasattr(self, "xy_dist") and hasattr(self, "ori_dist"):
+            xy_dist = self.xy_dist
+            ori_dist = self.ori_dist
+        else:
+            xy_dist, ori_dist = self._make_distances(PERIODIC)
 
         Wblks = [[1,1], [1,1]]
         # loop over post- (a) and pre-synaptic (b) cell-types
