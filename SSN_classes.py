@@ -559,7 +559,12 @@ class SSN2DTopoV1(_SSN_Base):
                                     tau_vec=tau_vec, **kwargs)
         self.grid_pars = grid_pars
         self._make_retinmap()
-        self.ori_map = self._make_orimap() if ori_map is None else ori_map
+        if ori_map is None:
+            self._make_orimap()
+        else:
+            Nx = self.grid_pars.gridsize_Nx
+            assert ori_map.shape == (Nx, Nx)
+            self.ori_vec = np.tile(ori_map.ravel(), (2,))
 
         self.conn_pars = conn_pars
         if conn_pars is not None: # conn_pars = None allows for ssn-object initialization without a W
@@ -583,8 +588,25 @@ class SSN2DTopoV1(_SSN_Base):
         return self.y_vec / self.grid_pars.magnif_factor
 
     @property
-    def ori_vec(self):
-        return np.tile(self.ori_map.ravel(), (2,))
+    def x_map(self):
+        Nx = self.grid_pars.gridsize_Nx
+        return self.x_vec[self.EI == b"E"].reshape((Nx, Nx))
+
+    @property
+    def y_map(self):
+        Nx = self.grid_pars.gridsize_Nx
+        return self.y_vec[self.EI == b"E"].reshape((Nx, Nx))
+
+    @property
+    def ori_map(self):
+        Nx = self.grid_pars.gridsize_Nx
+        return self.ori_vec[self.EI == b"E"].reshape((Nx, Nx))
+
+    @ori_map.setter
+    def ori_map(self, new_map):
+        Nx = self.grid_pars.gridsize_Nx
+        assert new_map.shape == (Nx, Nx)
+        self.ori_vec = np.tile(new_map.ravel(), (2,))
 
     @property
     def center_inds(self):
@@ -655,14 +677,12 @@ class SSN2DTopoV1(_SSN_Base):
 
         xs = np.linspace(0, Lx, Nx)
         ys = np.linspace(0, Ly, Ny)
-        [X, Y] = np.meshgrid(xs - xs[len(xs) // 2], ys - ys[len(ys) // 2]) # doing it this way, as opposed to using np.linspace(-Lx/2, Lx/2, Nx) (for which this fails for even Nx), guarantees that there is always a pixel with x or y == 0
-        Y = -Y # without this Y decreases going upwards
+        [x_map, y_map] = np.meshgrid(xs - xs[len(xs) // 2], ys - ys[len(ys) // 2]) # doing it this way, as opposed to using np.linspace(-Lx/2, Lx/2, Nx) (for which this fails for even Nx), guarantees that there is always a pixel with x or y == 0
+        y_map = -y_map # without this y_map decreases going upwards
 
-        self.x_map = X
-        self.y_map = Y
-        self.x_vec = np.tile(X.ravel(), (2,))
-        self.y_vec = np.tile(Y.ravel(), (2,))
-        return self.x_map, self.y_map
+        self.x_vec = np.tile(x_map.ravel(), (2,))
+        self.y_vec = np.tile(y_map.ravel(), (2,))
+        return x_map, y_map
 
 
     def _make_orimap(self, hyper_col=None, nn=30, X=None, Y=None):
@@ -692,9 +712,10 @@ class SSN2DTopoV1(_SSN_Base):
             z = z + np.exp(1j * tmp)
 
         # ori map with preferred orientations in the range (0, _Lring] (i.e. (0, 180] by default)
-        self.ori_map = (np.angle(z) + np.pi) * SSN2DTopoV1._Lring/(2*np.pi)
+        ori_map = (np.angle(z) + np.pi) * SSN2DTopoV1._Lring/(2*np.pi)
+        self.ori_vec = np.tile(ori_map.ravel(), (2,))
 
-        return self.ori_map
+        return ori_map
 
 
     def _make_distances(self, PERIODIC):
