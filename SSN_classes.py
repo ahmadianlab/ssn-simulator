@@ -589,7 +589,7 @@ class SSN2DTopoV1(_SSN_Base):
     @property
     def center_inds(self):
         """ indices of center-E and center-I neurons """
-        return np.where((self.x_vec==0) & (self.y_vec==0))[0]
+        return np.nonzero((self.x_vec==0) & (self.y_vec==0))[0]
 
 
     def xys2inds(self, xys=[[0,0]], units="degree"):
