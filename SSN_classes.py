@@ -414,8 +414,8 @@ class SSN_2D_AMPAGABA(SSN_2D, _SSN_AMPAGABA_Base):
 # =============================== ring models ==================================
 
 class SSNHomogRing(_SSN_Base):
-    def __init__(self, n, k, tauE, tauI, J_2x2, s_2x2,
-                         Ne, L=180, dist="arc", L1normalize=False, **kwargs): #, Ni=None,
+    def __init__(self, n, k, tauE, tauI, J_2x2=None, s_2x2=None,
+                         Ne=50, L=180, dist="arc", L1normalize=False, **kwargs): #, Ni=None,
 
         #Ni = Ni if Ni is not None else Ne
         Ni = Ne
@@ -427,7 +427,8 @@ class SSNHomogRing(_SSN_Base):
         self.L = L
         self.dist = dist
         self.ori_vec = np.tile(np.linspace(0, L, Ne+1)[:-1], (2,))
-        self.make_W(J_2x2, s_2x2, L1normalize=L1normalize) #, L, Ne, Ni)
+        if J_2x2 is not None and s_2x2 is not None:
+            self.make_W(J_2x2, s_2x2, L1normalize=L1normalize) #, L, Ne, Ni)
 
 
     @property
