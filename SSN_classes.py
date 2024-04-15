@@ -10,7 +10,6 @@ class _SSN_Base(object):
         self.k = k
         self.Ne = Ne
         self.Ni = Ni
-        self.N = self.Ne + self.Ni
         # set vector of E/I types of different neurons
         self.EI = np.chararray((self.N,), itemsize=1)
         self.EI[:Ne] = b"E"
@@ -22,6 +21,10 @@ class _SSN_Base(object):
         if W is not None:
             self.W = W 
 
+
+    @property
+    def N(self):
+        return self.Ne + self.Ni
 
     @property
     def neuron_params(self):
@@ -174,12 +177,13 @@ class _SSN_AMPAGABA_Base(_SSN_Base):
     def num_rcpt(self):
         return self.tau_s.size
 
-    # Among receptor (non-"private") parameters/properties,
-    # only self.tau_s and self.NMDA_ratio can be set.
+    # Receptor parameters can only be set via the
+    # properties self.tau_s and self.NMDA_ratio.
     # We cache certain O(N) or O(N^2)-size vectors or matrices
-    # depending on them, once constructed, and for this reason .tau_s
-    # and .NMDAratio are coded as properties so that when they
-    # are given new values the cached vectors/matrices are deleted.
+    # depending on these, once they are constructed, and for 
+    # this reason .tau_s and .NMDAratio are coded as 
+    # properties so that when they are set to new values, 
+    # the cached vectors/matrices are deleted.
     @property
     def tau_s(self):
         return self._tau_s
@@ -242,16 +246,18 @@ class _SSN_AMPAGABA_Base(_SSN_Base):
 
     @property
     def Wrcpt(self):
-        # TODO: Wrcpt depends on self.N, .Ne and .Ni too, in addition to .NMDAratio & .W, but only changes in the latter delete _Wrcpt
-        if not hasattr(self, '_Wrcpt'): # cache it in _Wrcpt once it's been created;
-                                        # it's deleted if self.W or self.NMDA_ratio are changed.
-            W_AMPA = (1-self.NMDAratio)* np.hstack((self.W[:,:self.Ne], np.zeros((self.N,self.Ni)) ))
-            W_GABA = np.hstack((np.zeros((self.N,self.Ne)), self.W[:,self.Ne:]))
+        if not hasattr(self, '_Wrcpt'):
+            # Cache it in _Wrcpt once it's been created;
+            # _Wrcpt is deleted if self.W or self.NMDA_ratio are changed.
+            W_AMPA = (1-self.NMDAratio) * np.hstack((self.W[:, :self.Ne], np.zeros((self.N, self.Ni))))
+            W_GABA = np.hstack((np.zeros((self.N, self.Ne)), self.W[:, self.Ne:]))
             Wrcpt = [W_AMPA, W_GABA]
             if self.NMDAratio > 0:
                 W_NMDA = self.NMDAratio/(1-self.NMDAratio) * W_AMPA
                 Wrcpt.append(W_NMDA)
-            self._Wrcpt = np.vstack(Wrcpt) # shape = (self.num_rcpt*self.N, self.N)
+            self._Wrcpt = np.vstack(Wrcpt)
+            assert self._Wrcpt.shape == (self.num_rcpt * self.N, self.N)
+
         return self._Wrcpt
 
 
@@ -456,7 +462,9 @@ class SSNHomogRing(_SSN_Base):
         dist = self.dist if dist is None else dist
         Ne = self.Ne if Ne is None else Ne
         Ni = self.Ni if Ni is None else Ni
-        assert Ne == Ni # unequal case is not written
+        if Ne != Ni:
+            raise NotImplementedError(
+                    "Ring SSN with unequal Ne and Ni is not implemented.")
         Ns = [Ne, Ni]
 
         if dist == "arc":
