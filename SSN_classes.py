@@ -481,8 +481,8 @@ class SSNHomogRing(_SSN_Base):
         else:
             normalize = lambda vec: vec        
         blk = lambda i, j: toeplitz(normalize(np.exp(-distsq(self.ori_vec_E)/2/s_2x2[i,j]**2) / Ns[j]))
-        W = np.vstack([np.hstack([J_2x2[i,j] * blk(i,j) for j in range(2)])
-                                                        for i in range(2)])
+        W = np.vstack([np.hstack([ (-1)**j * J_2x2[i,j] * blk(i,j)  for j in range(2)])
+                                                                    for i in range(2)])
 
         self.W = W
         self.L1normalize = L1normalize
